@@ -167,6 +167,21 @@ async def _firecrawl(c, key):
             "note": f"billing period ends {data.get('billingPeriodEnd') or 'unknown'}"}
 
 
+async def _spidercloud(c, key):
+    d = await _get(c, "https://api.spider.cloud/data/credits",
+                   headers={"Authorization": f"Bearer {key}"})
+    data = d.get("data") if isinstance(d, dict) else None
+    raw = data.get("credits") if isinstance(data, dict) else None
+    try:
+        credits = Decimal(raw) if isinstance(raw, (str, int, float)) and not isinstance(raw, bool) else None
+    except (InvalidOperation, ValueError):
+        credits = None
+    if credits is None or not credits.is_finite() or credits < 0:
+        raise ValueError("Spider returned no valid credit balance")
+    return {"value": float(credits / Decimal(10_000)), "unit": "USD",
+            "note": "Pay-as-you-go balance; Spider reports 10,000 API credits per USD"}
+
+
 async def _linkup(c, key):
     d = await _get(c, "https://api.linkup.so/v1/credits/balance",
                    headers={"Authorization": f"Bearer {key}"})
@@ -175,6 +190,21 @@ async def _linkup(c, key):
             or not math.isfinite(float(raw)) or raw < 0:
         raise ValueError("Linkup returned no valid USD balance")
     return {"value": float(raw), "unit": "USD", "note": "prepaid credit balance"}
+
+
+async def _you(c, key):
+    d = await _get(c, "https://api.you.com/v1/billing/account_balance",
+                   headers={"X-API-Key": key})
+    data = d.get("data") if isinstance(d, dict) else None
+    attributes = data.get("attributes") if isinstance(data, dict) else None
+    raw = attributes.get("balance") if isinstance(attributes, dict) else None
+    try:
+        cents = Decimal(str(raw)) if raw is not None and not isinstance(raw, bool) else None
+    except (InvalidOperation, ValueError):
+        cents = None
+    if cents is None or not cents.is_finite() or cents < 0:
+        raise ValueError("You.com returned no valid account balance")
+    return {"value": float(cents / 100), "unit": "USD", "note": "prepaid account balance"}
 
 
 async def _scrapegraphai(c, key):
@@ -821,9 +851,11 @@ BALANCE_ROUTES = {
     "fishaudio": _fishaudio,
     "tavily": _tavily,
     "linkup": _linkup,
+    "you": _you,
     "serper": _serper,
     "olostep": _olostep,
     "firecrawl": _firecrawl,
+    "spidercloud": _spidercloud,
     "scrapegraphai": _scrapegraphai,
     "scrapecreators": _scrapecreators,
     "serpapi": _serpapi,

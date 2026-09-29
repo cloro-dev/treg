@@ -46,12 +46,14 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "trestleiq": ("cash", "auto_recharge", "manual"),
     "tavily": ("credits", "manual", "api"),
     "linkup": ("cash", "manual", "api"),
+    "you": ("cash", "auto_recharge", "api"),
     # The API supplies the exact credit balance; vendor auto recharge was manually enabled and
     # verified in the Serper dashboard.
     "serper": ("credits", "auto_recharge", "api"),
     "keenable": ("requests", "manual", "manual"),
     "olostep": ("credits", "manual", "api"),
     "firecrawl": ("credits", "subscription", "api"),
+    "spidercloud": ("cash", "auto_recharge", "api"),
     # The shared account uses subscription funding; the API supplies its exact credit balance.
     "scrapegraphai": ("credits", "subscription", "api"),
     "getleadsio": ("credits", "manual", "api"),
@@ -130,6 +132,8 @@ _RATE_LIMITS: dict[str, dict] = {
     # ceiling on both tiers, so this provider-wide pace is safe for all four catalog tools.
     "tavily": {"limit": 100, "window_s": 60, "source": "docs"},
     "linkup": {"limit": 10, "window_s": 1, "source": "docs"},
+    # Finance Research is 5/s; the other You.com APIs are 10/s. Smoothing is provider-wide.
+    "you": {"limit": 5, "window_s": 1, "source": "docs"},
     # GET /account reports 50 queries/s for the current shared account. Pace the platform key to
     # that live account allowance; BYOK bypasses this limiter.
     "serper": {"limit": 50, "window_s": 1, "source": "api"},
@@ -141,6 +145,8 @@ _RATE_LIMITS: dict[str, dict] = {
     # Standard's strictest shared submission limit is 100/min for Crawl and Batch Scrape.
     # Scrape, Search and Map allow 500/min; provider-wide smoothing uses the lower ceiling.
     "firecrawl": {"limit": 100, "window_s": 60, "source": "docs"},
+    # Spider allows 10,000 core requests/minute by default. Smooth the shared account well below it.
+    "spidercloud": {"limit": 100, "window_s": 60, "source": "policy"},
     # Deployment allowance supplied for the shared account. Live responses did not include usable
     # rate headers, so keep the configured 500/min ceiling explicit instead of inferring from them.
     "scrapegraphai": {"limit": 500, "window_s": 60, "source": "policy"},

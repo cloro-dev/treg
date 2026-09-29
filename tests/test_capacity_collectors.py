@@ -16,6 +16,27 @@ from treg.domain.capacity import collectors, policy, sweep
 from treg.timeutil import utcnow_naive
 
 
+async def test_spidercloud_balance_converts_api_credits_to_usd():
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/data/credits"
+        assert request.headers["authorization"] == "Bearer test"
+        return httpx.Response(200, json={"data": {"credits": "250000.000000"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._spidercloud(client, "test")
+    assert row["value"] == 25.0
+    assert row["unit"] == "USD"
+
+
+@pytest.mark.parametrize("credits", [None, True, "NaN", "Infinity", "bad", -1])
+async def test_spidercloud_balance_rejects_invalid_api_credits(credits):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"data": {"credits": credits}}))) as client:
+        with pytest.raises(ValueError, match="Spider returned no valid credit balance"):
+            await collectors._spidercloud(client, "test")
+
+
 async def test_fishaudio_balance_uses_workspace_wallet(monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_FISHAUDIO", "private-test-key")
     monkeypatch.setenv("TREG_PLATFORM_FISHAUDIO_WORKSPACE_ID", "workspace-test-id")
@@ -120,6 +141,26 @@ async def test_serper_capacity_uses_free_account_balance():
         "unit": "credits",
         "note": "account rate limit 50 queries/s",
     }
+
+
+async def test_you_balance_converts_cents_to_usd():
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url == "https://api.you.com/v1/billing/account_balance"
+        assert request.headers["x-api-key"] == "test-key"
+        return httpx.Response(200, json={"data": {"attributes": {"balance": "9986"}}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._you(client, "test-key")
+    assert row == {"value": 99.86, "unit": "USD", "note": "prepaid account balance"}
+
+
+@pytest.mark.parametrize("balance", [None, True, "bad", "NaN", "Infinity", -1])
+async def test_you_balance_rejects_uncertain_values(balance):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"data": {"attributes": {"balance": balance}}}))) as client:
+        with pytest.raises(ValueError, match="valid account balance"):
+            await collectors._you(client, "test-key")
 
 
 @pytest.mark.parametrize("balance", [None, True, "bad", "NaN", "Infinity", -1])
